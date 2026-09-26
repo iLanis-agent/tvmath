@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TVMath - honest TV size picker</title>
+<style>
+  :root { --bg:#0d1117; --card:#151b25; --line:#24303f; --ink:#e2e8f0; --dim:#8fa1b6; --acc:#6cb6f6; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; padding:32px 18px 64px; }
+  .wrap { max-width:1060px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:.5px; }
+  h1 span { color:var(--acc); }
+  .home { float:right; color:var(--dim); text-decoration:none; font-size:13px; margin-top:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; margin-top:20px; }
+  .card h2 { font-size:15px; color:var(--dim); font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:150px; }
+  label { display:block; font-size:12px; color:var(--dim); margin-bottom:4px; }
+  input, select { width:100%; background:#0f141d; border:1px solid var(--line); color:var(--ink); border-radius:8px; padding:9px 10px; font:inherit; }
+  button { background:var(--acc); color:#081726; border:0; border-radius:9px; padding:10px 20px; font:600 15px system-ui; cursor:pointer; }
+  button.ghost { background:#0f141d; color:var(--acc); border:1px solid var(--line); padding:8px 14px; font-size:13px; }
+  .err { color:#ff8a80; font-size:14px; margin-top:10px; min-height:20px; }
+  .note { color:var(--dim); font-size:12.5px; margin-top:10px; }
+  .verdict { background:#101a28; border:1px solid #23415e; border-radius:12px; padding:18px 20px; margin-top:20px; font-size:16px; line-height:1.6; display:none; }
+  .verdict b { color:var(--acc); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-top:20px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .stat .k { color:var(--dim); font-size:12px; margin-top:4px; }
+  .viz { margin-top:20px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; display:none; }
+  .viz h2 { font-size:15px; color:var(--dim); font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; }
+  .screen { position:relative; margin:0 auto; }
+  .frame { position:absolute; border:2px solid var(--acc); border-radius:4px; }
+  .frame .tag { position:absolute; top:-22px; left:0; font-size:12px; color:var(--acc); white-space:nowrap; }
+  .wall { position:relative; background:#0f141d; border:1px dashed var(--line); border-radius:8px; margin:26px auto 0; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="home" href="index.html">home</a>
+  <h1>TV<span>Math</span></h1>
+
+  <div class="card">
+    <h2>Your setup</h2>
+    <div class="row">
+      <div><label>Couch distance (m)</label><input id="dist" type="number" value="3" min="1" max="10" step="0.1"></div>
+      <div><label>TV you have in mind (inches)</label><input id="diag" type="number" value="65" min="24" max="120"></div>
+      <div><label>Resolution</label><select id="res"><option value="4k">4K</option><option value="1080p">1080p</option><option value="8k">8K</option></select></div>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="go">Judge my setup</button>
+      <button class="ghost" id="preset1">apartment: 2.5 m, 55"</button>
+      <button class="ghost" id="preset2">big room: 4 m, 55"</button>
+    </div>
+    <div class="err" id="err"></div>
+    <div class="note">SMPTE says the screen should fill at least 30 deg of your view; THX likes 40. Under 26 deg is TV-on-a-postage-stamp territory.</div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <div class="stats hidden" id="statsWrap">
+    <div class="stat"><div class="v" id="sFov"></div><div class="k">of your view filled</div></div>
+    <div class="stat"><div class="v" id="sBand"></div><div class="k">verdict band</div></div>
+    <div class="stat"><div class="v" id="sMin"></div><div class="k">smallest size for 30 deg</div></div>
+    <div class="stat"><div class="v" id="sMax"></div><div class="k">size for the 40 deg THX feel</div></div>
+    <div class="stat"><div class="v" id="sRes"></div><div class="k">full-detail distance</div></div>
+    <div class="stat"><div class="v" id="sDims"></div><div class="k">screen width x height</div></div>
+  </div>
+
+  <div class="viz" id="vizWrap">
+    <h2>Your size vs the recommendation (to scale)</h2>
+    <div class="wall" id="wall"></div>
+    <div class="note">Inner blue frame: your TV. Outer frame: the 40 deg size for your couch.</div>
+  </div>
+
+  <div class="card">
+    <h2>Why the showroom lies</h2>
+    <p style="font-size:14px;">
+      TVs look huge in stores because you stand two meters away. What matters is <b style="color:var(--acc)">how much of your view the screen fills from the couch</b>.
+      SMPTE's cinematic minimum is <b style="color:var(--acc)">30 degrees</b>; THX prefers <b style="color:var(--acc)">40</b>. Most living rooms run 20-25, which is why the upgrade nobody regrets is the size up.
+      Resolution follows the same honesty: 4K detail only exists if you sit within about <b style="color:var(--acc)">1x the diagonal</b>; from further back, 1080p would look identical and the extra pixels are decoration for the spec sheet.
+    </p>
+  </div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function(){
+  document.getElementById('preset1').addEventListener('click', function(){
+    document.getElementById('dist').value = 2.5;
+    document.getElementById('diag').value = 55;
+    document.getElementById('res').value = '4k';
+  });
+  document.getElementById('preset2').addEventListener('click', function(){
+    document.getElementById('dist').value = 4;
+    document.getElementById('diag').value = 55;
+    document.getElementById('res').value = '4k';
+  });
+
+  document.getElementById('go').addEventListener('click', function(){
+    var errEl = document.getElementById('err'); errEl.textContent = '';
+    var r;
+    try {
+      r = TVMathEngine.analyze({
+        distanceM: document.getElementById('dist').value,
+        diagonalIn: document.getElementById('diag').value,
+        resolution: document.getElementById('res').value
+      });
+    } catch(e){ errEl.textContent = e.message; return; }
+
+    document.getElementById('sFov').textContent = r.fov + ' deg';
+    document.getElementById('sBand').textContent = r.band;
+    document.getElementById('sMin').textContent = r.recMin + '"';
+    document.getElementById('sMax').textContent = r.recMax + '"';
+    document.getElementById('sRes').textContent = r.benefitDist + ' m (' + r.resolution + ')';
+    document.getElementById('sDims').textContent = r.widthM + ' x ' + r.heightM + ' m';
+    document.getElementById('statsWrap').classList.remove('hidden');
+
+    var v = document.getElementById('verdict');
+    v.innerHTML = r.verdict.replace(/([\d.]+ deg|postage stamp|small for the room|decent|cinematic|front row|IMAX headache|\d+"|too far to see the full \w+ detail|close enough to see every \w+ pixel)/g, '<b>$1</b>');
+    v.style.display = 'block';
+
+    /* to-scale viz: your TV vs the 40-deg pick */
+    var wall = document.getElementById('wall');
+    var yourDiag = Number(document.getElementById('diag').value);
+    var recDiag = r.recMax;
+    var maxDiag = Math.max(yourDiag, recDiag);
+    var scale = 520 / maxDiag; /* px per inch of diagonal */
+    var wallW = maxDiag * scale * 0.8716 + 40;
+    var wallH = maxDiag * scale * 0.4903 + 60;
+    wall.style.width = wallW + 'px';
+    wall.style.height = wallH + 'px';
+    wall.innerHTML = '';
+    function frame(diag, color, tag, dashed){
+      var w = diag * scale * 0.8716, h = diag * scale * 0.4903;
+      var f = document.createElement('div');
+      f.className = 'frame';
+      f.style.width = w + 'px'; f.style.height = h + 'px';
+      f.style.left = ((wallW - w) / 2) + 'px';
+      f.style.top = ((wallH - h) / 2 + 10) + 'px';
+      f.style.borderColor = color;
+      if (dashed) f.style.borderStyle = 'dashed';
+      f.innerHTML = '<div class="tag" style="color:' + color + '">' + tag + '</div>';
+      wall.appendChild(f);
+    }
+    frame(recDiag, '#3d5a78', 'for 40 deg: ' + recDiag + '"', true);
+    frame(yourDiag, '#6cb6f6', 'yours: ' + yourDiag + '"', false);
+    document.getElementById('vizWrap').style.display = 'block';
+  });
+})();
+</script>
+</body>
+</html>
